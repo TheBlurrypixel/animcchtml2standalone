@@ -1,0 +1,21 @@
+{
+  "name": "animcchtml2standalone",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^1.8.7"
+  },
+  "description": "",
+  "dependencies": {
+    "electron-packager": "^12.1.1",
+    "electron-progressbar": "^1.1.0",
+    "electron-prompt": "^1.1.0",
+    "image-data-uri": "^1.1.1",
+    "jsdom": "^11.12.0"
+  }
+}
