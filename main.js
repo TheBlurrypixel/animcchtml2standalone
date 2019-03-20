@@ -206,55 +206,91 @@ function start() {
 
 		// find the main CC script and get its element
 		var scriptIndex = 0;
-		var indexOfLib = -1
-		var elementIndex = -1
+		var dataIndex = 0;
+
+		// get the lib.properties statement
+		function processManifest(scriptElem, startIndex) {
+			var scriptText = scriptElem.text;
+			var libPropertiesStartIndex = startIndex;
+			if(libPropertiesStartIndex > -1) {
+				// find the beginBrace
+				var libPropertiesEndIndex = scriptText.indexOf(';', libPropertiesStartIndex);
+				var libPropOpenBraceIndex = scriptText.indexOf('{', libPropertiesStartIndex);
+				if(libPropOpenBraceIndex > -1) {
+					// find the closing brace
+					var libPropCloseBraceIndex = findEndingBrace(scriptText, libPropOpenBraceIndex, "{}");
+					if(libPropCloseBraceIndex > -1) {
+						var libsPropsObj = eval("(" + scriptText.substring(libPropOpenBraceIndex, libPropCloseBraceIndex+1) + ")");
+
+						if(libsPropsObj && libsPropsObj.hasOwnProperty("manifest")) {
+							// go through manifest and remove unused SpriteSheets
+							var prePost = "";
+							var insertPre = "\n";
+
+							function manItemToString(item) {
+								var periodIndex = item.src.indexOf('.');
+								if(periodIndex > -1) {
+									var testExt = item.src.substring(periodIndex+1, item.src.length);
+									if(	(testExt == 'jpg') ||
+											(testExt == 'jpeg') ||
+											(testExt == 'png') ||
+											(testExt == 'gif') ||
+											(testExt == 'bmp') ) {
+										var variableName = "dataURI_" + dataIndex++;
+										var imageAsData = convertImgToDataURI(item.src);
+										var midFix = variableName + " = \"" + imageAsData + "\";\n";
+										insertPre = insertPre + midFix;
+
+										return ("{src: " + variableName + ", id: \"" + item.id + "\", type: \"image\"}");
+									}
+								}
+								var itemKeys = Object.keys(item);
+								return "{" + itemKeys.reduce( (tot, cur, curInd) => {
+									var isString = typeof(item[cur]) == "string";
+									return ((curInd > 0) ? tot + ", " : "") + cur + ":" + (isString ? "\"" : "") + item[cur] + (isString ? "\"" : "");
+								}, "") + "}";
+							}
+
+							var newManifestString = libsPropsObj.manifest.reduce( (newManTotal, newManCurrent, newManCurInd) => {
+								return ( (newManCurInd > 0) ? newManTotal + ",\n" : "" ) + "\t\t" + manItemToString(newManCurrent);
+							}, "");
+
+							// now get the full libProps string
+							var libPropsString = scriptText.substring(libPropertiesStartIndex, libPropertiesEndIndex+1);
+
+							// replace the manigest with our new one
+							var newLibPropsString = libPropsString.replace(/(manifest\: \[)([\s.\S][^\]]*)(\])/, "$1\n" + newManifestString + "\n\t$3");
+
+							var newScriptText = (insertPre
+								+ scriptText.substring(0, libPropertiesStartIndex)
+								+ newLibPropsString
+								+ scriptText.substring(libPropertiesEndIndex+1, scriptText.length)
+							);
+
+							var par = scriptElem.parentNode;
+							var elmnt = dom.window.document.createElement("script");
+
+							var textnode = dom.window.document.createTextNode(newScriptText);
+							elmnt.appendChild(textnode);
+							par.replaceChild(elmnt, scriptElem);
+						}
+					}
+				}
+			}
+		}
+
 		while(scriptIndex < scriptInputs.length) {
 			var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
 			if(libPropIndex > -1) {
-				elementIndex = scriptIndex;
-				indexOfLib = libPropIndex;
-				break;
+				processManifest(scriptInputs[scriptIndex], libPropIndex);
 			}
 			else {
 				libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties=/)
 				if(libPropIndex > -1) {
-					elementIndex = scriptIndex;
-					indexOfLib = libPropIndex;
-					break;
+					processManifest(scriptInputs[scriptIndex], libPropIndex);
 				}
 			}
 			scriptIndex++;
-		}
-
-		// get the manifest
-		if(elementIndex > -1) {
-			var indexOfClosingBrace = findEndingBrace(scriptInputs[elementIndex].text, indexOfLib);
-
-			var lib = {};
-			eval(scriptInputs[elementIndex].text.substring(indexOfLib, indexOfClosingBrace+1));
-
-			if(lib.properties.hasOwnProperty("manifest")) {
-				var prePost = "";
-				var insertPre = "\n";
-				for(var i = 0; i < lib.properties.manifest.length; i++) {
-					var variableName = "dataURI_" + i;
-					var imageAsData = convertImgToDataURI(lib.properties.manifest[i].src);
-					var midFix = variableName + " = \"" + imageAsData + "\";\n";
-					var postFix = "\t\t{src:" + variableName + ", id:\"" + lib.properties.manifest[i].id + ((i == (lib.properties.manifest.length-1)) ? "\"}\n" : "\"},\n");
-
-					insertPre = insertPre + midFix;
-					prePost = prePost + postFix;
-				}
-
-				var insertPost = "var manifestImages = [\n" + prePost + "];\n";
-
-				var par = scriptInputs[elementIndex].parentNode;
-				var elmnt = dom.window.document.createElement("script");
-
-				var textnode = dom.window.document.createTextNode(insertPre + insertPost + scriptInputs[elementIndex].text + '\n');
-				elmnt.appendChild(textnode);
-				par.replaceChild(elmnt, scriptInputs[elementIndex]);
-			}
 		}
 
 		scriptIndex = 0;
@@ -266,27 +302,6 @@ function start() {
 			}
 			scriptIndex++;
 		}
-
-		var insertLoaderCode = `// begin modified loader code
-	var queue = {};
-	handleFileLoad(queue, comp);
-	handleComplete(queue, comp)
-}
-function handleFileLoad(queue, comp) {
-	var images=comp.getImages();
-	for (var i = 0; i < manifestImages.length; i++)
-		queue[manifestImages[i].id] = images[manifestImages[i].id] = manifestImages[i].src;
-}
-function handleComplete(queue,comp) {
-	//This function is always called, irrespective of the content. You can use the variable "stage" after it is created in token create_stage.
-	var lib=comp.getLibrary();
-	var ss=comp.getSpriteSheet();
-	var ssMetadata = lib.ssMetadata;
-	for(i=0; i<ssMetadata.length; i++) {
-		ss[ssMetadata[i].name] = new createjs.SpriteSheet( {"images": [queue[ssMetadata[i].name]], "frames": ssMetadata[i].frames} )
-	}
-	// end modified loader code
-`
 
 		var insertResponsiveCode = "\t// begin modified responsive code\n" +
 (excludeAspectCode ? "\t\t\t\t}\n" : "\t\t\t\t\tvar ASPECTLIMIT = " + aspectLimitFloat.toString() + "; // Don't set below or equal to zero!!!!\n\t\t\t\t\tvar aspect = ih/iw;\n\t\t\t\t\tsRatio = aspect > ASPECTLIMIT ? ASPECTLIMIT*iw/h : ( aspect < (1/ASPECTLIMIT) ? ASPECTLIMIT*ih/w : sRatio);\n\t\t\t\t}\n") + `			}
@@ -303,30 +318,6 @@ function handleComplete(queue,comp) {
 `
 
 		if(initScriptsElemIndex > -1) {
-			var loaderIndex = scriptInputs[initScriptsElemIndex].text.search(/\bvar loader\b/);
-
-			if(loaderIndex > -1) {
-				// find the index to insert
-				var insertLoaderIndex = scriptInputs[initScriptsElemIndex].text.lastIndexOf("\n", loaderIndex) + 1;
-				if(insertLoaderIndex > -1) {
-					var ssMetadatIndex = scriptInputs[initScriptsElemIndex].text.indexOf("for(i=0; i<ssMetadata.length; i++)", loaderIndex);
-					var openBracketIndex = scriptInputs[initScriptsElemIndex].text.indexOf('{', ssMetadatIndex);
-					closeBracketIndex = findEndingBrace(scriptInputs[initScriptsElemIndex].text, openBracketIndex - 1);
-					closeNextIndex = scriptInputs[initScriptsElemIndex].text.indexOf('\n', closeBracketIndex) + 1;
-
-					if(closeNextIndex > -1) {
-						var newText = scriptInputs[initScriptsElemIndex].text.substring(0, insertLoaderIndex) + insertLoaderCode + scriptInputs[initScriptsElemIndex].text.substring(closeNextIndex);
-
-						var par = scriptInputs[initScriptsElemIndex].parentNode;
-						var elmnt = dom.window.document.createElement("script");
-
-						var textnode = dom.window.document.createTextNode(newText + '\n');
-						elmnt.appendChild(textnode);
-						par.replaceChild(elmnt, scriptInputs[initScriptsElemIndex]);
-					}
-				}
-			}
-
 			var sRatioIndex = scriptInputs[initScriptsElemIndex].text.search(/\bsRatio = Math.max\b/);
 			if(sRatioIndex > -1) {
 				// find the index to insert
@@ -341,7 +332,7 @@ function handleComplete(queue,comp) {
 							var par = scriptInputs[initScriptsElemIndex].parentNode;
 							var elmnt = dom.window.document.createElement("script");
 
-							var textnode = dom.window.document.createTextNode(newText + '\n');
+							var textnode = dom.window.document.createTextNode(newText);
 							elmnt.appendChild(textnode);
 							par.replaceChild(elmnt, scriptInputs[initScriptsElemIndex]);
 						}
@@ -436,8 +427,8 @@ function handleComplete(queue,comp) {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
-						title: 'Inline Images',
-						message: 'Shall I inline all images?'
+						title: 'Inline Non Manifest Images',
+						message: 'Shall I inline all img tags?'
 					});
 
 					if(imageRes == 0)
