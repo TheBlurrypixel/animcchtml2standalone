@@ -36,7 +36,7 @@ function insertAfter(newNode, referenceNode) {
 function start() {
 	var directory = "";
 
-	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader) {
+	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes) {
 		if(!html_string) return false;
 
 		var found = html_string.match(/<html>/g);
@@ -131,20 +131,38 @@ function start() {
 			return rightCurlyBraceIndex;
 		}
 
+		var replacedCreateJS = false;
+		if(enableStageGL || convRes) {
+			var tempSIndex = 0;
+			while(tempSIndex < scriptInputs.length) {
+				if(scriptInputs[tempSIndex].hasAttribute('src')) {
+					if(!replacedCreateJS && (scriptInputs[tempSIndex].src.search(/\bcreatejs\b.*\.js$/) > -1)) {
+						scriptInputs[tempSIndex].src = "https://code.createjs.com/1.0.0/createjs.min.js";
+						replacedCreateJS = true;
+					}
+				}
+
+				if(convRes) {
+					var newText = scriptInputs[tempSIndex].text.replace(/Ticker.setFPS\((.+)\)/g, "Ticker.framerate = $1").replace(/\.getNumChildren\(\)/g, ".numChildren");
+	
+					var par = scriptInputs[tempSIndex].parentNode;
+					var elmnt = dom.window.document.createElement("script");
+					var textnode = dom.window.document.createTextNode(newText + '\n');
+
+					elmnt.appendChild(textnode);
+					par.replaceChild(elmnt, scriptInputs[tempSIndex]);
+				}
+
+				tempSIndex++;
+			}
+		}
+
 		// convert to stageGL code
 		if(enableStageGL) {
 			var tempScriptIndex = 0;
 			var stageGLScriptIndex = -1;
 			var responsiveScriptIndex = -1;
-			var replacedCreateJS = false;
 			while(tempScriptIndex < scriptInputs.length) {
-				if(scriptInputs[tempScriptIndex].hasAttribute('src')) {
-					if(!replacedCreateJS && (scriptInputs[tempScriptIndex].src.search(/\bcreatejs\b.*\.js$/) > -1)) {
-						scriptInputs[tempScriptIndex].src = "https://code.createjs.com/1.0.0/createjs.min.js";
-						replacedCreateJS = true;
-					}
-				}
-
 				if((stageGLScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\bnew createjs.Stage\b/) > -1))
 					stageGLScriptIndex = tempScriptIndex;
 
@@ -378,12 +396,12 @@ function start() {
 		return true;
 	}
 
-	function run(inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, inFiles) {
+	function run(inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes, inFiles) {
 		if((inFiles) && (inFiles.length > 0)) {
 			var isWin = process.platform === "win32";
 			directory = isWin ? inFiles[0].substring(0, inFiles[0].lastIndexOf("\\")) : inFiles[0].substring(0, inFiles[0].lastIndexOf("\/"));
 
-			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader);
+			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes);
 		}
 		else
 			return false;
@@ -410,6 +428,17 @@ function start() {
 					});
 
 					if(res == 0)
+						return Promise.reject("error");
+
+					var inConvRes = dialog.showMessageBox(null, {
+						type: 'question',
+						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+						defaultId: 1,
+						title: 'CreateJS Version 1.0.0',
+						message: 'Do you want to Convert for CreateJS v1.0.0 ?'
+					});
+
+					if(inConvRes == 0)
 						return Promise.reject("error");
 
 					var inlineRes = dialog.showMessageBox(null, {
@@ -445,7 +474,7 @@ function start() {
 					if(fixPreloaderDiv == 0)
 						return Promise.reject("error");
 
-					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1)});
+					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1), convRes: (inConvRes == 1)});
 				}
 				else
 					return Promise.reject("error");
@@ -455,7 +484,7 @@ function start() {
 			return Promise.reject("error");
 	})
 	.then((inRes) => {
-		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, dialog.showOpenDialog({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }))) {
+		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, inRes.convRes, dialog.showOpenDialog({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }))) {
 	//			createWindow();
 			dialog.showMessageBox(null, {
 				type: 'info', buttons: ['Dismiss'],
