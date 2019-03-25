@@ -141,10 +141,10 @@ function start() {
 						replacedCreateJS = true;
 					}
 				}
+				else if(convRes) {
+//					var newText = scriptInputs[tempSIndex].text.replace(/Ticker.setFPS\((.+)\)/g, "Ticker.framerate = $1").replace(/\.getNumChildren\(\)/g, ".numChildren");
+					var newText = scriptInputs[tempSIndex].text.replace(/Ticker.setFPS\((.+)\)/g, "Ticker.framerate = $1");
 
-				if(convRes) {
-					var newText = scriptInputs[tempSIndex].text.replace(/Ticker.setFPS\((.+)\)/g, "Ticker.framerate = $1").replace(/\.getNumChildren\(\)/g, ".numChildren");
-	
 					var par = scriptInputs[tempSIndex].parentNode;
 					var elmnt = dom.window.document.createElement("script");
 					var textnode = dom.window.document.createTextNode(newText + '\n');
@@ -152,7 +152,6 @@ function start() {
 					elmnt.appendChild(textnode);
 					par.replaceChild(elmnt, scriptInputs[tempSIndex]);
 				}
-
 				tempSIndex++;
 			}
 		}
