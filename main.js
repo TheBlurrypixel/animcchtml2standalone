@@ -165,7 +165,7 @@ function start() {
 				if((stageGLScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\bnew createjs.Stage\b/) > -1))
 					stageGLScriptIndex = tempScriptIndex;
 
-				if((responsiveScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\bfunction makeResponsive\b/) > -1))
+				if((responsiveScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\ban.makeResponsive\b/) > -1))
 					responsiveScriptIndex = tempScriptIndex;
 
 				if((stageGLScriptIndex > -1) && (responsiveScriptIndex > -1))
@@ -186,7 +186,7 @@ function start() {
 			}
 
 			if(responsiveScriptIndex > -1) {
-				var responsiveFuncIndex = scriptInputs[responsiveScriptIndex].text.search(/\bfunction makeResponsive\b/);
+				var responsiveFuncIndex = scriptInputs[responsiveScriptIndex].text.search(/\ban.makeResponsive\b/);
 				var endingText = scriptInputs[responsiveScriptIndex].text.substring(responsiveFuncIndex);
 				var stageUpdateIndex = endingText.search(/\bstage.update\(\)/);
 				var newText = scriptInputs[responsiveScriptIndex].text.substring(0, responsiveFuncIndex+stageUpdateIndex) + "stage.updateViewport(canvas.width, canvas.height);\n\t\t\t" + scriptInputs[responsiveScriptIndex].text.substring(responsiveFuncIndex+stageUpdateIndex, scriptInputs[responsiveScriptIndex].text.length);
@@ -313,7 +313,8 @@ function start() {
 		scriptIndex = 0;
 		var initScriptsElemIndex = -1;
 		while(scriptIndex < scriptInputs.length) {
-			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
+//			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
+			if(scriptInputs[scriptIndex].text.search(/\ban.makeResponsive\b/) > -1) {
 				initScriptsElemIndex = scriptIndex;
 				break;
 			}
@@ -323,10 +324,12 @@ function start() {
 		var insertResponsiveCode = "\t// begin modified responsive code\n" +
 (excludeAspectCode ? "\t\t\t\t}\n" : "\t\t\t\t\tvar ASPECTLIMIT = " + aspectLimitFloat.toString() + "; // Don't set below or equal to zero!!!!\n\t\t\t\t\tvar aspect = ih/iw;\n\t\t\t\t\tsRatio = aspect > ASPECTLIMIT ? ASPECTLIMIT*iw/h : ( aspect < (1/ASPECTLIMIT) ? ASPECTLIMIT*ih/w : sRatio);\n\t\t\t\t}\n") + `			}
 			var stretchingRatio = ` + stretchRatioFloat.toString() + `;
-			canvas.width = Math.floor(iw*stretchingRatio);
-			canvas.height = Math.floor(ih*stretchingRatio);
-			canvas.style.width = dom_overlay_container.style.width = anim_container.style.width =  canvas.width+'px';
-			canvas.style.height = anim_container.style.height = dom_overlay_container.style.height = canvas.height+'px';
+			domContainers[0].width = Math.floor(iw*stretchingRatio);
+			domContainers[0].height = Math.floor(ih*stretchingRatio);
+			domContainers.forEach(function(container) {
+				container.style.width = domContainers[0].width + 'px';
+				container.style.height = domContainers[0].height + 'px';
+			});
 			exportRoot.x = -(w*sRatio-iw) / (2 * sRatio);
 			exportRoot.y = -(h*sRatio-ih) / (2 * sRatio);
 			stage.scaleX = sRatio*stretchingRatio;
@@ -428,14 +431,18 @@ function start() {
 
 					if(res == 0)
 						return Promise.reject("error");
-
-					var inConvRes = dialog.showMessageBox(null, {
-						type: 'question',
-						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
-						defaultId: 1,
-						title: 'CreateJS Version 1.0.0',
-						message: 'Do you want to Convert for CreateJS v1.0.0 ?'
-					});
+					else if(res == 2) {
+						var inConvRes = dialog.showMessageBox(null, {
+							type: 'question',
+							buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+							defaultId: 1,
+							title: 'CreateJS Version 1.0.0',
+							message: 'Do you want to Convert for CreateJS v1.0.0 ?'
+						});
+					}
+					else {
+						inConvRes = 1;
+					}
 
 					if(inConvRes == 0)
 						return Promise.reject("error");
