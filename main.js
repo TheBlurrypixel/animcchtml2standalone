@@ -36,7 +36,7 @@ function insertAfter(newNode, referenceNode) {
 function start() {
 	var directory = "";
 
-	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes) {
+	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convRes) {
 		if(!html_string) return false;
 
 		var found = html_string.match(/<html>/g);
@@ -56,7 +56,8 @@ function start() {
 
 		function processScriptTag(element, data) {
 			var par = element.parentNode;
-			var elmnt = dom.window.document.createElement("script");
+//			var elmnt = dom.window.document.createElement("script");
+			var elmnt = element.cloneNode();
 			var textnode = dom.window.document.createTextNode('\n' + data + '\n');
 			elmnt.appendChild(textnode);
 			par.replaceChild(elmnt, element);
@@ -97,19 +98,19 @@ function start() {
 			element.src = imageAsData;
 		}
 
-		function processScriptSrc(elememt) {
-			// save a handle to the "this" pointer
-			var myElement = elememt;
-
-			// this is an anonymous function
-			return function (err, data) {
-				var par = myElement.parentNode;
-				var elmnt = dom.window.document.createElement("script");
-				var textnode = dom.window.document.createTextNode('\n' + data + '\n');
-				elmnt.appendChild(textnode);
-				par.replaceChild(elmnt, myElement);
-			}
-		}
+		// function processScriptSrc(elememt) {
+		// 	// save a handle to the "this" pointer
+		// 	var myElement = elememt;
+		//
+		// 	// this is an anonymous function
+		// 	return function (err, data) {
+		// 		var par = myElement.parentNode;
+		// 		var elmnt = dom.window.document.createElement("script");
+		// 		var textnode = dom.window.document.createTextNode('\n' + data + '\n');
+		// 		elmnt.appendChild(textnode);
+		// 		par.replaceChild(elmnt, myElement);
+		// 	}
+		// }
 
 		function findEndingBrace(inString, startingIndex) {
 			var leftCurlyBraceIndex = inString.indexOf('{', startingIndex);// index of the '{' to which you need to find the matching '}'
@@ -146,7 +147,8 @@ function start() {
 					var newText = scriptInputs[tempSIndex].text.replace(/Ticker.setFPS\((.+)\)/g, "Ticker.framerate = $1");
 
 					var par = scriptInputs[tempSIndex].parentNode;
-					var elmnt = dom.window.document.createElement("script");
+//					var elmnt = dom.window.document.createElement("script");
+					var elmnt = scriptInputs[tempSIndex].cloneNode();
 					var textnode = dom.window.document.createTextNode(newText + '\n');
 
 					elmnt.appendChild(textnode);
@@ -178,7 +180,8 @@ function start() {
 				var newText = scriptInputs[stageGLScriptIndex].text.replace(/\bnew createjs.Stage\b/, 'new createjs.StageGL').replace(/\bcreatejs.Stage.call\(this, canvas\)/, 'createjs.StageGL.call(this, canvas, { antialias: true })');
 
 				var par = scriptInputs[stageGLScriptIndex].parentNode;
-				var elmnt = dom.window.document.createElement("script");
+				// var elmnt = dom.window.document.createElement("script");
+				var elmnt = scriptInputs[stageGLScriptIndex].cloneNode();
 
 				var textnode = dom.window.document.createTextNode(newText + '\n');
 				elmnt.appendChild(textnode);
@@ -192,7 +195,8 @@ function start() {
 				var newText = scriptInputs[responsiveScriptIndex].text.substring(0, responsiveFuncIndex+stageUpdateIndex) + "stage.updateViewport(canvas.width, canvas.height);\n\t\t\t" + scriptInputs[responsiveScriptIndex].text.substring(responsiveFuncIndex+stageUpdateIndex, scriptInputs[responsiveScriptIndex].text.length);
 
 				var par = scriptInputs[responsiveScriptIndex].parentNode;
-				var elmnt = dom.window.document.createElement("script");
+				// var elmnt = dom.window.document.createElement("script");
+				var elmnt = scriptInputs[responsiveScriptIndex].cloneNode();
 
 				var textnode = dom.window.document.createTextNode(newText + '\n');
 				elmnt.appendChild(textnode);
@@ -204,7 +208,7 @@ function start() {
 		if(inline) {
 			for(var i = 0; i < scriptInputs.length; i++) {
 				if(scriptInputs[i].hasAttribute('src')) {
-					if(scriptInputs[i].src.startsWith('http')) {
+					if(scriptInputs[i].src.startsWith('http') && inlineURLs) {
 						var content = require('child_process').execFileSync('curl', ['--silent', '-L', scriptInputs[i].src], {encoding: 'utf8'});
 						if(content)
 							processScriptTag(scriptInputs[i], content);
@@ -285,7 +289,8 @@ function start() {
 							);
 
 							var par = scriptElem.parentNode;
-							var elmnt = dom.window.document.createElement("script");
+							// var elmnt = dom.window.document.createElement("script");
+							var elmnt = scriptElem.cloneNode();
 
 							var textnode = dom.window.document.createTextNode(newScriptText);
 							elmnt.appendChild(textnode);
@@ -296,18 +301,20 @@ function start() {
 			}
 		}
 
-		while(scriptIndex < scriptInputs.length) {
-			var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
-			if(libPropIndex > -1) {
-				processManifest(scriptInputs[scriptIndex], libPropIndex);
-			}
-			else {
-				libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties=/)
+		if(makeDataURI) {
+			while(scriptIndex < scriptInputs.length) {
+				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
 				if(libPropIndex > -1) {
 					processManifest(scriptInputs[scriptIndex], libPropIndex);
 				}
+				else {
+					libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties=/)
+					if(libPropIndex > -1) {
+						processManifest(scriptInputs[scriptIndex], libPropIndex);
+					}
+				}
+				scriptIndex++;
 			}
-			scriptIndex++;
 		}
 
 		scriptIndex = 0;
@@ -350,7 +357,8 @@ function start() {
 							var newText = scriptInputs[initScriptsElemIndex].text.substring(0, insertResponsiveIndex) + insertResponsiveCode + scriptInputs[initScriptsElemIndex].text.substring(endResponsiveIndex);
 
 							var par = scriptInputs[initScriptsElemIndex].parentNode;
-							var elmnt = dom.window.document.createElement("script");
+							// var elmnt = dom.window.document.createElement("script");
+							var elmnt = scriptInputs[initScriptsElemIndex].cloneNode();
 
 							var textnode = dom.window.document.createTextNode(newText);
 							elmnt.appendChild(textnode);
@@ -398,12 +406,12 @@ function start() {
 		return true;
 	}
 
-	function run(inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes, inFiles) {
+	function run(inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convRes, inFiles) {
 		if((inFiles) && (inFiles.length > 0)) {
 			var isWin = process.platform === "win32";
 			directory = isWin ? inFiles[0].substring(0, inFiles[0].lastIndexOf("\\")) : inFiles[0].substring(0, inFiles[0].lastIndexOf("\/"));
 
-			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineImages, enableStageGL, fixPreloader, convRes);
+			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convRes);
 		}
 		else
 			return false;
@@ -458,6 +466,31 @@ function start() {
 					if(inlineRes == 0)
 						return Promise.reject("error");
 
+					var inlineURLs = 2;
+					if(inlineRes == 1) {
+						inlineURLs = dialog.showMessageBox(null, {
+							type: 'question',
+							buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+							defaultId: 1,
+							title: 'Inline External URLs',
+							message: 'Shall I also inline all external scripts?'
+						});
+					}
+
+					if(inlineURLs == 0)
+						return Promise.reject("error");
+
+					var makeDataURI = dialog.showMessageBox(null, {
+						type: 'question',
+						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+						defaultId: 1,
+						title: 'Inline Manifest Images',
+						message: 'Shall I inline all Manifest Images?'
+					});
+
+					if(makeDataURI == 0)
+						return Promise.reject("error");
+
 					var imageRes = dialog.showMessageBox(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
@@ -480,7 +513,7 @@ function start() {
 					if(fixPreloaderDiv == 0)
 						return Promise.reject("error");
 
-					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1), convRes: (inConvRes == 1)});
+					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineURLs: (inlineURLs == 1), makeDataURI: (makeDataURI == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1), convRes: (inConvRes == 1)});
 				}
 				else
 					return Promise.reject("error");
@@ -490,7 +523,7 @@ function start() {
 			return Promise.reject("error");
 	})
 	.then((inRes) => {
-		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, inRes.convRes, dialog.showOpenDialog({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }))) {
+		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineURLs, inRes.makeDataURI, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, inRes.convRes, dialog.showOpenDialog({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }))) {
 	//			createWindow();
 			dialog.showMessageBox(null, {
 				type: 'info', buttons: ['Dismiss'],
