@@ -58,6 +58,7 @@ function start() {
 			var par = element.parentNode;
 //			var elmnt = dom.window.document.createElement("script");
 			var elmnt = element.cloneNode();
+			elmnt.removeAttribute("src");
 			var textnode = dom.window.document.createTextNode('\n' + data + '\n');
 			elmnt.appendChild(textnode);
 			par.replaceChild(elmnt, element);
