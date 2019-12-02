@@ -16,14 +16,14 @@
   },
   "homepage": "https://github.com/TheBlurrypixel/animcchtml2standalone#readme",
   "devDependencies": {
-    "electron": "^1.8.7"
+    "electron": "^6.1.5"
   },
-  "description": "",
+  "description": "embed images and scripts in animate playable",
   "dependencies": {
-    "electron-packager": "^12.1.1",
-    "electron-progressbar": "^1.1.0",
-    "electron-prompt": "^1.1.0",
-    "image-data-uri": "^1.1.1",
-    "jsdom": "^11.12.0"
+    "electron-packager": "^14.1.1",
+    "electron-progressbar": "^1.2.0",
+    "electron-prompt": "^1.3.1",
+    "image-data-uri": "^2.0.1",
+    "jsdom": "^15.2.1"
   }
 }

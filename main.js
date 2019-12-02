@@ -41,6 +41,8 @@ function start() {
 
 		var found = html_string.match(/<html>/g);
 
+		var errorHappened = false;
+
 		var stretchRatioFloat = parseFloat(inStretchingRatio);
 		var aspectLimitFloat = parseFloat(inAspectLimit);
 		var excludeAspectCode = (aspectLimitFloat == 0);
@@ -215,7 +217,6 @@ function start() {
 							processScriptTag(scriptInputs[i], content);
 					}
 					else {
-						console.log(tempPath);
 						var tempPath = path.join(directory, scriptInputs[i].src);
 						if(fs.existsSync(tempPath)) {
 							var tempString = fs.readFileSync(tempPath, 'utf8');
@@ -243,80 +244,94 @@ function start() {
 					// find the closing brace
 					var libPropCloseBraceIndex = findEndingBrace(scriptText, libPropOpenBraceIndex, "{}");
 					if(libPropCloseBraceIndex > -1) {
-						var libsPropsObj = eval("(" + scriptText.substring(libPropOpenBraceIndex, libPropCloseBraceIndex+1) + ")");
+						try {
+							var libPropsString = "(" + scriptText.substring(libPropOpenBraceIndex, libPropCloseBraceIndex+1) + ")";
+							libPropsString = libPropsString.replace(/[\t\n\r]+/gm, ' ');
+							var libsPropsObj = eval(libPropsString);
 
-						if(libsPropsObj && libsPropsObj.hasOwnProperty("manifest")) {
-							// go through manifest and remove unused SpriteSheets
-							var prePost = "";
-							var insertPre = "\n";
+							if(libsPropsObj && libsPropsObj.hasOwnProperty("manifest")) {
+								// go through manifest and remove unused SpriteSheets
+								var prePost = "";
+								var insertPre = "\n";
 
-							function manItemToString(item) {
-								var periodIndex = item.src.indexOf('.');
-								if(periodIndex > -1) {
-									var testExt = item.src.substring(periodIndex+1, item.src.length);
-									if(	(testExt == 'jpg') ||
-											(testExt == 'jpeg') ||
-											(testExt == 'png') ||
-											(testExt == 'gif') ||
-											(testExt == 'bmp') ) {
-										var variableName = "dataURI_" + dataIndex++;
-										var imageAsData = convertImgToDataURI(item.src);
-										var midFix = variableName + " = \"" + imageAsData + "\";\n";
-										insertPre = insertPre + midFix;
+								function manItemToString(item) {
+									var periodIndex = item.src.indexOf('.');
+									if(periodIndex > -1) {
+										var testExt = item.src.substring(periodIndex+1, item.src.length);
+										if(	(testExt == 'jpg') ||
+												(testExt == 'jpeg') ||
+												(testExt == 'png') ||
+												(testExt == 'gif') ||
+												(testExt == 'bmp') ) {
+											var variableName = "dataURI_" + dataIndex++;
+											var imageAsData = convertImgToDataURI(item.src);
+											var midFix = variableName + " = \"" + imageAsData + "\";\n";
+											insertPre = insertPre + midFix;
 
-										return ("{src: " + variableName + ", id: \"" + item.id + "\", type: \"image\"}");
+											return ("{src: " + variableName + ", id: \"" + item.id + "\", type: \"image\"}");
+										}
 									}
+									var itemKeys = Object.keys(item);
+									return "{" + itemKeys.reduce( (tot, cur, curInd) => {
+										var isString = typeof(item[cur]) == "string";
+										return ((curInd > 0) ? tot + ", " : "") + cur + ":" + (isString ? "\"" : "") + item[cur] + (isString ? "\"" : "");
+									}, "") + "}";
 								}
-								var itemKeys = Object.keys(item);
-								return "{" + itemKeys.reduce( (tot, cur, curInd) => {
-									var isString = typeof(item[cur]) == "string";
-									return ((curInd > 0) ? tot + ", " : "") + cur + ":" + (isString ? "\"" : "") + item[cur] + (isString ? "\"" : "");
-								}, "") + "}";
+
+								var newManifestString = libsPropsObj.manifest.reduce( (newManTotal, newManCurrent, newManCurInd) => {
+									return ( (newManCurInd > 0) ? newManTotal + ",\n" : "" ) + "\t\t" + manItemToString(newManCurrent);
+								}, "");
+
+								// now get the full libProps string
+								var libPropsString = scriptText.substring(libPropertiesStartIndex, libPropertiesEndIndex+1);
+
+								// replace the manigest with our new one
+								var newLibPropsString = libPropsString.replace(/(manifest\: \[)([\s.\S][^\]]*)(\])/, "$1\n" + newManifestString + "\n\t$3");
+
+								var newScriptText = (insertPre
+									+ scriptText.substring(0, libPropertiesStartIndex)
+									+ newLibPropsString
+									+ scriptText.substring(libPropertiesEndIndex+1, scriptText.length)
+								);
+
+								var par = scriptElem.parentNode;
+								// var elmnt = dom.window.document.createElement("script");
+								var elmnt = scriptElem.cloneNode();
+
+								var textnode = dom.window.document.createTextNode(newScriptText);
+								elmnt.appendChild(textnode);
+								par.replaceChild(elmnt, scriptElem);
 							}
-
-							var newManifestString = libsPropsObj.manifest.reduce( (newManTotal, newManCurrent, newManCurInd) => {
-								return ( (newManCurInd > 0) ? newManTotal + ",\n" : "" ) + "\t\t" + manItemToString(newManCurrent);
-							}, "");
-
-							// now get the full libProps string
-							var libPropsString = scriptText.substring(libPropertiesStartIndex, libPropertiesEndIndex+1);
-
-							// replace the manigest with our new one
-							var newLibPropsString = libPropsString.replace(/(manifest\: \[)([\s.\S][^\]]*)(\])/, "$1\n" + newManifestString + "\n\t$3");
-
-							var newScriptText = (insertPre
-								+ scriptText.substring(0, libPropertiesStartIndex)
-								+ newLibPropsString
-								+ scriptText.substring(libPropertiesEndIndex+1, scriptText.length)
-							);
-
-							var par = scriptElem.parentNode;
-							// var elmnt = dom.window.document.createElement("script");
-							var elmnt = scriptElem.cloneNode();
-
-							var textnode = dom.window.document.createTextNode(newScriptText);
-							elmnt.appendChild(textnode);
-							par.replaceChild(elmnt, scriptElem);
+						}
+						catch(err) {
+							console.log(err);
+							return false;
 						}
 					}
 				}
 			}
+			return true;
 		}
 
 		if(makeDataURI) {
 			while(scriptIndex < scriptInputs.length) {
 				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
 				if(libPropIndex > -1) {
-					processManifest(scriptInputs[scriptIndex], libPropIndex);
+					errorHappened = !processManifest(scriptInputs[scriptIndex], libPropIndex);
 				}
 				else {
 					libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties=/)
 					if(libPropIndex > -1) {
-						processManifest(scriptInputs[scriptIndex], libPropIndex);
+						errorHappened = !processManifest(scriptInputs[scriptIndex], libPropIndex);
 					}
 				}
 				scriptIndex++;
 			}
+		}
+
+		if(errorHappened) {
+			progressBar.close();
+			return false;
 		}
 
 		scriptIndex = 0;
@@ -420,18 +435,18 @@ function start() {
 	}
 
 	prompt({
-		width: 400, height: 180, title: 'Stretching Ratio', label: 'Enter a Stretching Ratio. This will reduce or increase the resolution of the canvas which will stretch to fit the window.', value: '1.0', inputAttrs: {type: 'number '}, type: 'input', selectOptions: null
+		width: 400, height: 220, title: 'Stretching Ratio', label: 'Enter a Stretching Ratio. This will reduce or increase the resolution of the canvas which will stretch to fit the window.', value: '1.0', inputAttrs: {type: 'number '}, type: 'input', selectOptions: null
 	})
 	.then((inStretch) => {
 		var inStretchFloat = parseFloat(inStretch);
 		if(!isNaN(inStretchFloat) && (inStretchFloat > 0)) {
 			return prompt({
-				width: 400, height: 180, title: 'Aspect Limit', label: 'Enter an Aspect Ratio. This will create a limit that the canvas can stretch to fit. Enter \'0\' to Disable Aspect Limit', value: '2.0', inputAttrs: {type: 'number '}, type: 'input', selectOptions: null
+				width: 400, height: 220, title: 'Aspect Limit', label: 'Enter an Aspect Ratio. This will create a limit that the canvas can stretch to fit. Enter \'0\' to Disable Aspect Limit', value: '2.0', inputAttrs: {type: 'number '}, type: 'input', selectOptions: null
 			})
 			.then((aspectInput) => {
 				var aspectInputFloat = parseFloat(aspectInput);
 				if(!isNaN(aspectInputFloat)  && (aspectInputFloat >= 0)) {
-					var res = dialog.showMessageBox(null, {
+					var res = dialog.showMessageBoxSync(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
@@ -442,7 +457,7 @@ function start() {
 					// if(res == 0)
 					// 	return Promise.reject("error");
 					// else if(res == 2) {
-					// 	var inConvRes = dialog.showMessageBox(null, {
+					// 	var inConvRes = dialog.showMessageBoxSync(null, {
 					// 		type: 'question',
 					// 		buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 					// 		defaultId: 1,
@@ -460,7 +475,7 @@ function start() {
 					if(res == 0)
 						return Promise.reject("error");
 
-					var inlineRes = dialog.showMessageBox(null, {
+					var inlineRes = dialog.showMessageBoxSync(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
@@ -473,7 +488,7 @@ function start() {
 
 					var inlineURLs = 2;
 					if(inlineRes == 1) {
-						inlineURLs = dialog.showMessageBox(null, {
+						inlineURLs = dialog.showMessageBoxSync(null, {
 							type: 'question',
 							buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 							defaultId: 1,
@@ -485,7 +500,7 @@ function start() {
 					if(inlineURLs == 0)
 						return Promise.reject("error");
 
-					var makeDataURI = dialog.showMessageBox(null, {
+					var makeDataURI = dialog.showMessageBoxSync(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
@@ -496,7 +511,7 @@ function start() {
 					if(makeDataURI == 0)
 						return Promise.reject("error");
 
-					var imageRes = dialog.showMessageBox(null, {
+					var imageRes = dialog.showMessageBoxSync(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
@@ -507,7 +522,7 @@ function start() {
 					if(imageRes == 0)
 						return Promise.reject("error");
 
-					var fixPreloaderDiv = dialog.showMessageBox(null, {
+					var fixPreloaderDiv = dialog.showMessageBoxSync(null, {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
@@ -528,16 +543,26 @@ function start() {
 			return Promise.reject("error");
 	})
 	.then((inRes) => {
-		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineURLs, inRes.makeDataURI, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, dialog.showOpenDialog({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }))) {
+		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineURLs, inRes.makeDataURI, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, dialog.showOpenDialogSync({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }) )) {
 	//			createWindow();
-			dialog.showMessageBox(null, {
+			dialog.showMessageBoxSync(null, {
 				type: 'info', buttons: ['Dismiss'],
 	    	title: 'Success',
 	    	message: 'Inlined Scripts,\nConverted images to data-uri,\nAnd Converted Responsive code'
-			}, app.quit);
+			}).then(() => {
+				app.quit();
+			})
 		}
-		else
+		else {
+			dialog.showMessageBoxSync(null, {
+				type: 'info', buttons: ['Dismiss'],
+	    	title: 'Abort',
+	    	message: 'A fatal error or cancellation occurred.\nConversion aborted.'
+			}).then(() => {
+				app.quit();
+			})
 			app.quit();
+		}
 	})
 	.catch((msg) => {
 		app.quit();
