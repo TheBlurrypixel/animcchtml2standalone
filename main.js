@@ -207,6 +207,23 @@ function start() {
 			}
 		}
 
+		function getScriptString(src) {
+			if(src.startsWith('http') && inlineURLs) {
+				var content = require('child_process').execFileSync('curl', ['--silent', '-L', src], {encoding: 'utf8'});
+				if(content)
+					return content;
+			}
+			else {
+				var tempPath = path.join(directory, src);
+				if(fs.existsSync(tempPath)) {
+					var tempString = fs.readFileSync(tempPath, 'utf8');
+					if(tempString)
+						return tempString;
+				}
+			}
+			return null;
+		}
+
 		// replace linked libraries with inline scripts
 		if(inline) {
 			for(var i = 0; i < scriptInputs.length; i++) {
@@ -255,20 +272,25 @@ function start() {
 								var insertPre = "\n";
 
 								function manItemToString(item) {
-									var periodIndex = item.src.indexOf('.');
+									var periodIndex = item.src.lastIndexOf('.');
 									if(periodIndex > -1) {
 										var testExt = item.src.substring(periodIndex+1, item.src.length);
-										if(	(testExt == 'jpg') ||
+										if(	((testExt == 'jpg') ||
 												(testExt == 'jpeg') ||
 												(testExt == 'png') ||
 												(testExt == 'gif') ||
-												(testExt == 'bmp') ) {
+												(testExt == 'bmp')) && makeDataURI) {
 											var variableName = "dataURI_" + dataIndex++;
 											var imageAsData = convertImgToDataURI(item.src);
 											var midFix = variableName + " = \"" + imageAsData + "\";\n";
 											insertPre = insertPre + midFix;
 
 											return ("{src: " + variableName + ", id: \"" + item.id + "\", type: \"image\"}");
+										}
+										else if((testExt == 'js') && inline) {
+											var scriptAsString = getScriptString(item.src);
+											insertPre = insertPre + scriptAsString + "\n\n";
+											return null;
 										}
 									}
 									var itemKeys = Object.keys(item);
@@ -279,13 +301,19 @@ function start() {
 								}
 
 								var newManifestString = libsPropsObj.manifest.reduce( (newManTotal, newManCurrent, newManCurInd) => {
-									return ( (newManCurInd > 0) ? newManTotal + ",\n" : "" ) + "\t\t" + manItemToString(newManCurrent);
+									var manItemString = manItemToString(newManCurrent);
+									if(!!manItemString)
+										return ( (newManCurInd > 0) ? newManTotal + ",\n" : "" ) + "\t\t" + manItemString;
+									return null;
 								}, "");
 
 								// now get the full libProps string
 								var libPropsString = scriptText.substring(libPropertiesStartIndex, libPropertiesEndIndex+1);
 
 								// replace the manigest with our new one
+								if(!newManifestString)
+									newManifestString = "";
+
 								var newLibPropsString = libPropsString.replace(/(manifest\: \[)([\s.\S][^\]]*)(\])/, "$1\n" + newManifestString + "\n\t$3");
 
 								var newScriptText = (insertPre
@@ -313,7 +341,7 @@ function start() {
 			return true;
 		}
 
-		if(makeDataURI) {
+		if(inline || makeDataURI) {
 			while(scriptIndex < scriptInputs.length) {
 				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
 				if(libPropIndex > -1) {
@@ -332,6 +360,25 @@ function start() {
 		if(errorHappened) {
 			progressBar.close();
 			return false;
+		}
+
+		scriptIndex = 0;
+		var loaderScriptsElemIndex = -1;
+		while(scriptIndex < scriptInputs.length) {
+//			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
+			if(scriptInputs[scriptIndex].text.search(/\bloader\.loadManifest\(lib\.properties\.manifest\)\B/gm) > -1) {
+				loaderScriptsElemIndex = scriptIndex;
+				break;
+			}
+			scriptIndex++;
+		}
+		if(loaderScriptsElemIndex > -1) {
+			var newText = scriptInputs[loaderScriptsElemIndex].text.replace(/\bloader\.loadManifest\(lib\.properties\.manifest\)\B/gm, "if(lib.properties.manifest.length > 0)\n\t\tloader.loadManifest(lib.properties.manifest);\n\telse\n\t\tloader.dispatchEvent('complete')\n")
+			var textnode = dom.window.document.createTextNode(newText);
+			var par = scriptInputs[loaderScriptsElemIndex].parentNode;
+			var elmnt = scriptInputs[loaderScriptsElemIndex].cloneNode();
+			elmnt.appendChild(textnode);
+			par.replaceChild(elmnt, scriptInputs[loaderScriptsElemIndex]);
 		}
 
 		scriptIndex = 0;
