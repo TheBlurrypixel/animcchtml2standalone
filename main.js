@@ -91,6 +91,10 @@ function start() {
 					imageAsData = "data:image/jpg;base64," + imageAsBase64;
 				else if(extensionString.localeCompare("gif")==0)
 					imageAsData = "data:image/gif;base64," + imageAsBase64;
+				else if(extensionString.localeCompare("mp4")==0)
+					imageAsData = "data:video/mp4;base64," + imageAsBase64;
+				else if(extensionString.localeCompare("webm")==0)
+					imageAsData = "data:video/webm;base64," + imageAsBase64;
 			}
 
 			return imageAsData;
@@ -440,6 +444,60 @@ function start() {
 				if(imgInputs[i].hasAttribute('src'))
 					processImgTag(imgInputs[i]);
 			}
+
+			// get all the script tags that instance a video
+			var scriptInputsArr = [...scriptInputs];
+			var scriptInputsWithVidArray = scriptInputsArr.filter( item => item.text.search(/\bnew lib\.an_Video\(/gm) > -1 );
+
+			scriptInputsWithVidArray.forEach( (script) => {
+				var insertPre = "\n";
+
+				var scriptString = script.text;
+				var searchIndex = 0;
+				var newVidIndex = scriptString.substring(searchIndex).search(/\bnew lib\.an_Video\(/gm);
+				while(newVidIndex > -1) {
+					var propString = scriptString.substring(newVidIndex);
+					var startBraceIndex = propString.indexOf('{');
+					 if(startBraceIndex > -1) {
+					 	var endBraceIndex = findEndingBrace(propString, startBraceIndex);
+					 	if(endBraceIndex > -1) {
+							var videoPropsString = "(" + propString.substring(startBraceIndex, endBraceIndex+1) + ")";
+							videoPropsString = videoPropsString.replace(/[\t\n\r]+/gm, ' ');
+							var videoPropsObj = eval(videoPropsString);
+							if(videoPropsObj && videoPropsObj.src) {
+
+								var variableName = "dataURI_" + dataIndex++;
+								var videoAsData = convertImgToDataURI(videoPropsObj.src);
+								var midFix = variableName + " = \"" + videoAsData + "\";\n";
+								insertPre = insertPre + midFix;
+
+								var newVideoPropsString = "new lib.an_Video(" + videoPropsString.replace(/(?:\'src\':)([^,]*)(?:,)/gm, "'src':" + variableName + ",");
+								var newScriptString = scriptString.substring(0, newVidIndex) + newVideoPropsString + scriptString.substring(newVidIndex+endBraceIndex+1);
+								endBraceIndex = newVideoPropsString.length-1;
+								scriptString = newScriptString;
+//								console.log(scriptString);
+							}
+							searchIndex = newVidIndex+endBraceIndex+1;
+//							console.log(scriptString.substring(searchIndex));
+							var subVidIndex = scriptString.substring(searchIndex).search(/\bnew lib\.an_Video\(/gm);
+							newVidIndex = (subVidIndex > -1) ? (searchIndex + subVidIndex) : -1;
+					 	}
+						else
+							break;
+					 }
+					else
+						break;
+				}
+
+				var newScriptText = insertPre + scriptString;
+
+				var par = script.parentNode;
+				var elmnt = script.cloneNode();
+
+				var textnode = dom.window.document.createTextNode(newScriptText);
+				elmnt.appendChild(textnode);
+				par.replaceChild(elmnt, script);
+			});
 		}
 
 		// fix preloader if exists
@@ -527,7 +585,7 @@ function start() {
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
 						title: 'Inline Scripts',
-						message: 'Shall I inline all scripts?'
+						message: 'Shall I inline all scripts including manifested?'
 					});
 
 					if(inlineRes == 0)
@@ -540,7 +598,7 @@ function start() {
 							buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 							defaultId: 1,
 							title: 'Inline External URLs',
-							message: 'Shall I also inline all external scripts?'
+							message: 'Shall I also inline all http sourced scripts?'
 						});
 					}
 
@@ -562,8 +620,8 @@ function start() {
 						type: 'question',
 						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
 						defaultId: 1,
-						title: 'Inline Non Manifest Images',
-						message: 'Shall I inline all img tags?'
+						title: 'Inline Non Manifest Images and Video',
+						message: 'Shall I inline all img tags and video components?'
 					});
 
 					if(imageRes == 0)
