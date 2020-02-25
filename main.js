@@ -50,7 +50,7 @@ function start() {
 		var progressBar = new ProgressBar( {text: 'Processing file...', detail: 'Wait...'} );
 		progressBar.on('completed', () => progressBar.detail = 'Task completed. Exiting...').on('aborted', () => app.quit());
 
-		var fileContent = html_string.replace(/^\uFEFF/, '');
+		var fileContent = html_string.replace(/^\uFEFF/gm, '');
 
 		const dom = new JSDOM(fileContent);
 
@@ -171,10 +171,10 @@ function start() {
 			var stageGLScriptIndex = -1;
 			var responsiveScriptIndex = -1;
 			while(tempScriptIndex < scriptInputs.length) {
-				if((stageGLScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\bnew createjs.Stage\b/) > -1))
+				if((stageGLScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\blib\.Stage\s?=/gm) > -1))
 					stageGLScriptIndex = tempScriptIndex;
 
-				if((responsiveScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\ban.makeResponsive\b/) > -1))
+				if((responsiveScriptIndex < 0) && (scriptInputs[tempScriptIndex].text.search(/\ban\.makeResponsive\s?=/gm) > -1))
 					responsiveScriptIndex = tempScriptIndex;
 
 				if((stageGLScriptIndex > -1) && (responsiveScriptIndex > -1))
@@ -184,7 +184,7 @@ function start() {
 			}
 
 			if(stageGLScriptIndex > -1) {
-				var newText = scriptInputs[stageGLScriptIndex].text.replace(/\bnew createjs.Stage\b/, 'new createjs.StageGL').replace(/\bcreatejs.Stage.call\(this, canvas\)/, 'createjs.StageGL.call(this, canvas, { antialias: true })');
+				var newText = scriptInputs[stageGLScriptIndex].text.replace(/\bnew\screatejs\.Stage\b/gm, 'new createjs.StageGL').replace(/\bcreatejs\.Stage\.call\(this,\s?canvas\)\B/gm, 'createjs.StageGL.call(this, canvas, { antialias: true })');
 
 				var par = scriptInputs[stageGLScriptIndex].parentNode;
 				// var elmnt = dom.window.document.createElement("script");
@@ -196,9 +196,9 @@ function start() {
 			}
 
 			if(responsiveScriptIndex > -1) {
-				var responsiveFuncIndex = scriptInputs[responsiveScriptIndex].text.search(/\ban.makeResponsive\b/);
+				var responsiveFuncIndex = scriptInputs[responsiveScriptIndex].text.search(/\ban\.makeResponsive\s?=/gm);
 				var endingText = scriptInputs[responsiveScriptIndex].text.substring(responsiveFuncIndex);
-				var stageUpdateIndex = endingText.search(/\bstage.update\(\)/);
+				var stageUpdateIndex = endingText.search(/\bstage.update\(\)/gm);
 				var newText = scriptInputs[responsiveScriptIndex].text.substring(0, responsiveFuncIndex+stageUpdateIndex) + "stage.updateViewport(canvas.width, canvas.height);\n\t\t\t" + scriptInputs[responsiveScriptIndex].text.substring(responsiveFuncIndex+stageUpdateIndex, scriptInputs[responsiveScriptIndex].text.length);
 
 				var par = scriptInputs[responsiveScriptIndex].parentNode;
@@ -318,7 +318,7 @@ function start() {
 								if(!newManifestString)
 									newManifestString = "";
 
-								var newLibPropsString = libPropsString.replace(/(manifest\: \[)([\s.\S][^\]]*)(\])/, "$1\n" + newManifestString + "\n\t$3");
+								var newLibPropsString = libPropsString.replace(/\b(manifest\:\s\[)([\s.\S][^\]]*)(\])\B/gm, "$1\n" + newManifestString + "\n\t$3");
 
 								var newScriptText = (insertPre
 									+ scriptText.substring(0, libPropertiesStartIndex)
@@ -347,16 +347,9 @@ function start() {
 
 		if(inline || makeDataURI) {
 			while(scriptIndex < scriptInputs.length) {
-				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties =/);
-				if(libPropIndex > -1) {
+				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib\.properties\s?=/gm);
+				if(libPropIndex > -1)
 					errorHappened = !processManifest(scriptInputs[scriptIndex], libPropIndex);
-				}
-				else {
-					libPropIndex = scriptInputs[scriptIndex].text.search(/\blib.properties=/)
-					if(libPropIndex > -1) {
-						errorHappened = !processManifest(scriptInputs[scriptIndex], libPropIndex);
-					}
-				}
 				scriptIndex++;
 			}
 		}
@@ -389,7 +382,7 @@ function start() {
 		var initScriptsElemIndex = -1;
 		while(scriptIndex < scriptInputs.length) {
 //			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
-			if(scriptInputs[scriptIndex].text.search(/\ban.makeResponsive\b/) > -1) {
+			if(scriptInputs[scriptIndex].text.search(/\ban\.makeResponsive\s?=/gm) > -1) {
 				initScriptsElemIndex = scriptIndex;
 				break;
 			}
@@ -413,7 +406,7 @@ function start() {
 `
 
 		if(initScriptsElemIndex > -1) {
-			var sRatioIndex = scriptInputs[initScriptsElemIndex].text.search(/\bsRatio = Math.max\b/);
+			var sRatioIndex = scriptInputs[initScriptsElemIndex].text.search(/\bsRatio\s?=\s?Math\.max\b/gm);
 			if(sRatioIndex > -1) {
 				// find the index to insert
 				var insertResponsiveIndex = scriptInputs[initScriptsElemIndex].text.indexOf("\n", sRatioIndex) + 1;
@@ -447,14 +440,14 @@ function start() {
 
 			// get all the script tags that instance a video
 			var scriptInputsArr = [...scriptInputs];
-			var scriptInputsWithVidArray = scriptInputsArr.filter( item => item.text.search(/\bnew lib\.an_Video\(/gm) > -1 );
+			var scriptInputsWithVidArray = scriptInputsArr.filter( item => item.text.search(/\bnew\slib\.an_Video\(\b/gm) > -1 );
 
 			scriptInputsWithVidArray.forEach( (script) => {
 				var insertPre = "\n";
 
 				var scriptString = script.text;
 				var searchIndex = 0;
-				var newVidIndex = scriptString.substring(searchIndex).search(/\bnew lib\.an_Video\(/gm);
+				var newVidIndex = scriptString.substring(searchIndex).search(/\bnew\slib\.an_Video\(\b/gm);
 				while(newVidIndex > -1) {
 					var propString = scriptString.substring(newVidIndex);
 					var startBraceIndex = propString.indexOf('{');
@@ -471,7 +464,7 @@ function start() {
 								var midFix = variableName + " = \"" + videoAsData + "\";\n";
 								insertPre = insertPre + midFix;
 
-								var newVideoPropsString = "new lib.an_Video(" + videoPropsString.replace(/(?:\'src\':)([^,]*)(?:,)/gm, "'src':" + variableName + ",");
+								var newVideoPropsString = "new lib.an_Video(" + videoPropsString.replace(/(?:\'src\'\:)([^,]*)(?:,)/gm, "'src':" + variableName + ",");
 								var newScriptString = scriptString.substring(0, newVidIndex) + newVideoPropsString + scriptString.substring(newVidIndex+endBraceIndex+1);
 								endBraceIndex = newVideoPropsString.length-1;
 								scriptString = newScriptString;
@@ -479,7 +472,7 @@ function start() {
 							}
 							searchIndex = newVidIndex+endBraceIndex+1;
 //							console.log(scriptString.substring(searchIndex));
-							var subVidIndex = scriptString.substring(searchIndex).search(/\bnew lib\.an_Video\(/gm);
+							var subVidIndex = scriptString.substring(searchIndex).search(/\bnew\slib\.an_Video\(\b/gm);
 							newVidIndex = (subVidIndex > -1) ? (searchIndex + subVidIndex) : -1;
 					 	}
 						else
