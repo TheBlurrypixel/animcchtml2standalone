@@ -36,7 +36,7 @@ function insertAfter(newNode, referenceNode) {
 function start() {
 	var directory = "";
 
-	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader) {
+	function loadHTML(err, html_string, filepath, inStretchingRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convWindowInner) {
 		if(!html_string) return false;
 
 		var found = html_string.match(/<html>/g);
@@ -345,6 +345,7 @@ function start() {
 			return true;
 		}
 
+		scriptInputs = dom.window.document.getElementsByTagName('script');
 		if(inline || makeDataURI) {
 			while(scriptIndex < scriptInputs.length) {
 				var libPropIndex = scriptInputs[scriptIndex].text.search(/\blib\.properties\s?=/gm);
@@ -360,6 +361,7 @@ function start() {
 		}
 
 		scriptIndex = 0;
+		scriptInputs = dom.window.document.getElementsByTagName('script');
 		var loaderScriptsElemIndex = -1;
 		while(scriptIndex < scriptInputs.length) {
 //			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
@@ -379,6 +381,7 @@ function start() {
 		}
 
 		scriptIndex = 0;
+		scriptInputs = dom.window.document.getElementsByTagName('script');
 		var initScriptsElemIndex = -1;
 		while(scriptIndex < scriptInputs.length) {
 //			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
@@ -431,6 +434,7 @@ function start() {
 		}
 
 		// replace img with datauri
+		scriptInputs = dom.window.document.getElementsByTagName('script');
 		if(inlineImages) {
 			var imgInputs = dom.window.document.getElementsByTagName('img');
 			for(var i = 0; i < imgInputs.length; i++) {
@@ -502,6 +506,47 @@ function start() {
 			}
 		}
 
+		// fix preloader if exists
+		if(convWindowInner) {
+			// add style for this conversion
+			var styles = dom.window.document.getElementsByTagName('style');
+			var elmnt = dom.window.document.createElement('style');
+			var newText = `\n\thtml, body {
+\theight: 100%;
+\t}\n`
+			var textnode = dom.window.document.createTextNode(newText);
+			elmnt.appendChild(textnode);
+			if(styles.length > 0)
+				styles[0].parentNode.insertBefore(elmnt, styles[0]);
+			else {
+				var titles = dom.window.document.getElementsByTagName('title');
+				if(titles.length > 0)
+					insertAfter(elmnt, titles[0]);
+			}
+
+			scriptIndex = 0;
+			scriptInputs = dom.window.document.getElementsByTagName('script');
+			var convScriptsElemIndex = -1;
+			while(scriptIndex < scriptInputs.length) {
+	//			if(scriptInputs[scriptIndex].text.search(/\bcanvas = document.getElementById\b/) > -1) {
+				if(scriptInputs[scriptIndex].text.search(/\ban\.makeResponsive\s?=/gm) > -1) {
+					convScriptsElemIndex = scriptIndex;
+					break;
+				}
+				scriptIndex++;
+			}
+
+			// now convert window.innerWidth
+			if(convScriptsElemIndex > -1) {
+				var newText = scriptInputs[convScriptsElemIndex].text.replace(/\bwindow\.innerWidth\b/gm, "document.body.clientWidth").replace(/\bwindow\.innerHeight\b/gm, "document.body.clientHeight");
+				var par = scriptInputs[convScriptsElemIndex].parentNode;
+				var elmnt = scriptInputs[convScriptsElemIndex].cloneNode();
+				var textnode = dom.window.document.createTextNode(newText);
+				elmnt.appendChild(textnode);
+				par.replaceChild(elmnt, scriptInputs[convScriptsElemIndex]);
+			}
+		}
+
 		var outputHtml;
 		if(found) {
 			outputHtml = "<!DOCTYPE html>\n" + dom.window.document.getElementsByTagName('html')[0].outerHTML;
@@ -521,12 +566,12 @@ function start() {
 		return true;
 	}
 
-	function run(inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, inFiles) {
+	function run(inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convWindowInner, inFiles) {
 		if((inFiles) && (inFiles.length > 0)) {
 			var isWin = process.platform === "win32";
 			directory = isWin ? inFiles[0].substring(0, inFiles[0].lastIndexOf("\\")) : inFiles[0].substring(0, inFiles[0].lastIndexOf("\/"));
 
-			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader);
+			return loadHTML(null, fs.readFileSync(inFiles[0], 'utf8'), inFiles[0], inStretchRatio, inAspectLimit, inline, inlineURLs, makeDataURI, inlineImages, enableStageGL, fixPreloader, convWindowInner);
 		}
 		else
 			return false;
@@ -551,24 +596,6 @@ function start() {
 						title: 'StageGL',
 						message: 'Do you want to enable StageGL?'
 					});
-
-					// if(res == 0)
-					// 	return Promise.reject("error");
-					// else if(res == 2) {
-					// 	var inConvRes = dialog.showMessageBoxSync(null, {
-					// 		type: 'question',
-					// 		buttons: ['Cancel', 'Yes, please', 'No, thanks'],
-					// 		defaultId: 1,
-					// 		title: 'CreateJS Version 1.0.0',
-					// 		message: 'Do you want to Convert for CreateJS v1.0.0 ?'
-					// 	});
-					// }
-					// else {
-					// 	inConvRes = 1;
-					// }
-					//
-					// if(inConvRes == 0)
-					// 	return Promise.reject("error");
 
 					if(res == 0)
 						return Promise.reject("error");
@@ -631,7 +658,18 @@ function start() {
 					if(fixPreloaderDiv == 0)
 						return Promise.reject("error");
 
-					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineURLs: (inlineURLs == 1), makeDataURI: (makeDataURI == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1)});
+					var convWindowInner = dialog.showMessageBoxSync(null, {
+						type: 'question',
+						buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+						defaultId: 1,
+						title: 'Convert window.innerWidth',
+						message: 'Convert window.innerWidth & innerHeight\nto document.body.clientWidth & clientHeight?'
+					});
+
+					if(convWindowInner == 0)
+						return Promise.reject("error");
+
+					return Promise.resolve({sRatio: inStretchFloat, aspectLimit: parseFloat(aspectInput), inline: (inlineRes == 1), inlineURLs: (inlineURLs == 1), makeDataURI: (makeDataURI == 1), inlineImages: (imageRes == 1), stageGL: (res == 1), fixPreloader: (fixPreloaderDiv == 1), convWindowInner: (convWindowInner == 1)});
 				}
 				else
 					return Promise.reject("error");
@@ -641,7 +679,7 @@ function start() {
 			return Promise.reject("error");
 	})
 	.then((inRes) => {
-		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineURLs, inRes.makeDataURI, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, dialog.showOpenDialogSync({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }) )) {
+		if(run(inRes.sRatio, inRes.aspectLimit, inRes.inline, inRes.inlineURLs, inRes.makeDataURI, inRes.inlineImages, inRes.stageGL, inRes.fixPreloader, inRes.convWindowInner, dialog.showOpenDialogSync({filters: [ {name: 'html', extensions: ['html', 'htm']}, {name: 'All Files', extensions: ['*']} ] }) )) {
 	//			createWindow();
 			dialog.showMessageBoxSync(null, {
 				type: 'info', buttons: ['Dismiss'],
