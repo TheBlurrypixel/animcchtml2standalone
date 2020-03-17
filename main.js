@@ -444,14 +444,14 @@ function start() {
 
 			// get all the script tags that instance a video
 			var scriptInputsArr = [...scriptInputs];
-			var scriptInputsWithVidArray = scriptInputsArr.filter( item => item.text.search(/\bnew\slib\.an_Video\(\b/gm) > -1 );
+			var scriptInputsWithVidArray = scriptInputsArr.filter( item => item.text.search(/\bnew\slib\.an_Video\(\B/gm) > -1 );
 
 			scriptInputsWithVidArray.forEach( (script) => {
 				var insertPre = "\n";
 
 				var scriptString = script.text;
 				var searchIndex = 0;
-				var newVidIndex = scriptString.substring(searchIndex).search(/\bnew\slib\.an_Video\(\b/gm);
+				var newVidIndex = scriptString.substring(searchIndex).search(/\bnew\slib\.an_Video\(\B/gm);
 				while(newVidIndex > -1) {
 					var propString = scriptString.substring(newVidIndex);
 					var startBraceIndex = propString.indexOf('{');
