@@ -16,7 +16,7 @@
   },
   "homepage": "https://github.com/TheBlurrypixel/animcchtml2standalone#readme",
   "devDependencies": {
-    "electron": "^6.1.5"
+    "electron": "^18.3.7"
   },
   "description": "embed images and scripts in animate playable",
   "dependencies": {
